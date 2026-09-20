@@ -1,1 +1,934 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Czas jazdy i odpoczynku</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&display=swap">
+<style>
+:root{
+  --bg:#F1F4F6; --surface:#FFFFFF; --line:#D5DDE3; --track:#E1E7EC;
+  --text:#12202A; --muted:#566873;
+  --drive:#1D6FD1; --break:#128A5E; --rest:#5B49D6;
+  --warn:#B87800; --over:#D22F35; --on:#FFFFFF;
+  color-scheme:light;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0E161C; --surface:#16222B; --line:#26353F; --track:#22313B;
+    --text:#E8EEF2; --muted:#8FA1AE;
+    --drive:#4BA3FF; --break:#35C48D; --rest:#A594FF;
+    --warn:#F5B324; --over:#FF5A5F; --on:#071018;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0E161C; --surface:#16222B; --line:#26353F; --track:#22313B;
+  --text:#E8EEF2; --muted:#8FA1AE;
+  --drive:#4BA3FF; --break:#35C48D; --rest:#A594FF;
+  --warn:#F5B324; --over:#FF5A5F; --on:#071018;
+  color-scheme:dark;
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px);}
+*,*::before,*::after{box-sizing:border-box;}
+body{
+  margin:0; background:var(--bg); color:var(--text);
+  font-family:'Barlow','Segoe UI',system-ui,-apple-system,Roboto,sans-serif;
+  font-size:16px; line-height:1.4;
+  -webkit-text-size-adjust:100%;
+}
+body[data-mode="none"]{--c:var(--muted);}
+body[data-mode="drive"]{--c:var(--drive);}
+body[data-mode="break"]{--c:var(--break);}
+body[data-mode="rest"]{--c:var(--rest);}
 
+.wrap{max-width:560px; margin:0 auto; padding:14px 16px 0;}
+.num{font-family:'Barlow Condensed','Arial Narrow',sans-serif; font-variant-numeric:tabular-nums; font-feature-settings:"tnum";}
+
+/* Hero */
+.hero{
+  position:relative; overflow:hidden;
+  background:var(--surface); border:1px solid var(--line); border-radius:20px;
+  padding:22px 20px 20px;
+}
+.hero::before{content:""; position:absolute; left:0; right:0; top:0; height:6px; background:var(--c);}
+.status{display:flex; align-items:center; gap:10px; font-weight:600; font-size:18px;}
+.dot{width:12px; height:12px; border-radius:50%; background:var(--c); flex:none;}
+.elapsed{margin-left:auto; color:var(--muted); font-size:22px; font-weight:600;}
+.big{
+  margin:14px 0 0; font-size:clamp(96px,31vw,156px); line-height:.9; font-weight:600;
+  letter-spacing:-.01em; color:var(--text);
+}
+.big.warn{color:var(--warn);}
+.big.over{color:var(--over);}
+.big-label{margin:6px 0 16px; font-size:18px; color:var(--muted);}
+.gauge,.track{height:14px; border-radius:7px; background:var(--track); overflow:hidden;}
+.gauge i,.track i{display:block; height:100%; width:0; border-radius:7px; background:var(--drive); transition:width .6s ease;}
+.gauge i.warn,.track i.warn{background:var(--warn);}
+.gauge i.over,.track i.over{background:var(--over);}
+.hint{margin:12px 0 0; font-size:16px; min-height:44px;}
+
+/* Limits */
+.limits{padding:22px 2px 6px;}
+.row{padding:0 0 18px;}
+.rowtop{display:flex; justify-content:space-between; align-items:baseline; gap:12px; margin-bottom:8px;}
+.rname{font-weight:600; font-size:17px;}
+.rval{font-size:24px; font-weight:600; color:var(--text);}
+.rval.warn{color:var(--warn);}
+.rval.over{color:var(--over);}
+.track{height:10px; border-radius:5px;}
+.track i{border-radius:5px;}
+.rsub{margin-top:6px; font-size:14px; color:var(--muted);}
+
+/* Sections */
+section.blk{padding:18px 2px 8px; border-top:1px solid var(--line);}
+h2{margin:0 0 12px; font-size:17px; font-weight:600;}
+.strip{position:relative; height:30px; border-radius:6px; background:var(--track); overflow:hidden;}
+.seg{position:absolute; top:0; bottom:0;}
+.seg.drive{background:var(--drive);}
+.seg.break{background:var(--break);}
+.seg.rest{background:var(--rest);}
+.ticks{display:flex; justify-content:space-between; margin-top:6px; font-size:13px; color:var(--muted); font-variant-numeric:tabular-nums;}
+.legend{display:flex; flex-wrap:wrap; gap:6px 16px; list-style:none; padding:0; margin:12px 0 0; font-size:14px; color:var(--muted);}
+.legend li{display:flex; align-items:center; gap:6px;}
+.legend b{width:10px; height:10px; border-radius:3px; display:inline-block;}
+.legend .d{background:var(--drive);} .legend .b{background:var(--break);} .legend .r{background:var(--rest);}
+
+ul.log{list-style:none; margin:0; padding:0;}
+ul.log li{display:flex; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid var(--line); font-size:16px;}
+ul.log li:last-child{border-bottom:0;}
+ul.log .ld{width:10px; height:10px; border-radius:50%; flex:none;}
+ul.log .ln{font-weight:600; min-width:92px;}
+ul.log .lt{color:var(--muted); font-variant-numeric:tabular-nums; flex:1;}
+ul.log .ll{font-weight:600; font-variant-numeric:tabular-nums;}
+.empty{color:var(--muted); margin:0;}
+
+details{border-top:1px solid var(--line); padding:14px 2px;}
+summary{cursor:pointer; font-weight:600; font-size:17px; min-height:32px; display:flex; align-items:center;}
+.tools{display:flex; flex-direction:column; gap:10px; margin-top:12px;}
+.tools label{display:flex; align-items:center; gap:12px; font-size:16px; min-height:44px;}
+.tools input[type=checkbox]{width:22px; height:22px; accent-color:var(--drive);}
+.tools .small{font-size:14px; color:var(--muted); margin:-4px 0 4px 34px;}
+.tbtn{
+  font:inherit; font-weight:600; min-height:48px; padding:0 16px; border-radius:12px;
+  border:1.5px solid var(--line); background:var(--surface); color:var(--text); text-align:left;
+}
+.tbtn.danger{color:var(--over);}
+.note{margin:6px 2px 26px; font-size:13px; color:var(--muted);}
+
+/* Action bar */
+.bar{
+  position:sticky; bottom:0; z-index:5;
+  background:var(--bg); border-top:1px solid var(--line);
+  padding:10px 16px calc(12px + env(safe-area-inset-bottom,0px));
+}
+.bar .in{max-width:560px; margin:0 auto; display:grid; grid-template-columns:repeat(3,1fr); gap:10px;}
+.act{
+  font:inherit; font-weight:600; font-size:16px;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px;
+  min-height:78px; border-radius:16px; border:2px solid var(--line);
+  background:var(--surface); color:var(--text); cursor:pointer;
+  -webkit-tap-highlight-color:transparent;
+}
+.act svg{width:28px; height:28px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round;}
+.act.drive{--k:var(--drive);} .act.break{--k:var(--break);} .act.rest{--k:var(--rest);}
+.act svg{color:var(--k);}
+.act[aria-pressed="true"]{background:var(--k); border-color:var(--k); color:var(--on);}
+.act[aria-pressed="true"] svg{color:var(--on);}
+.act:active{transform:scale(.97);}
+
+/* Mini mode */
+.minibtn{
+  font:inherit; font-size:14px; font-weight:600; min-height:40px; padding:0 14px; border-radius:20px;
+  border:1.5px solid var(--line); background:transparent; color:var(--text); margin-left:6px; white-space:nowrap;
+}
+.mini-sum{display:none; margin:8px 0 0; font-size:20px; font-weight:600;}
+body.mini{min-height:100vh; min-height:100dvh; display:flex; flex-direction:column;}
+body.mini .wrap{flex:1; width:100%; padding:8px 8px 0;}
+body.mini .mini-sum{display:block;}
+body.mini .limits, body.mini section.blk, body.mini details, body.mini .note{display:none;}
+body.mini .hero{padding:14px 12px 12px; border-radius:16px;}
+body.mini .status{font-size:15px; gap:8px;}
+body.mini .elapsed{font-size:17px;}
+body.mini .minibtn{min-height:36px; font-size:13px; padding:0 10px;}
+body.mini .big{margin-top:8px; font-size:clamp(64px,26vw,120px);}
+body.mini .big-label{font-size:14px; margin:4px 0 10px;}
+body.mini .gauge{height:10px;}
+body.mini .hint{font-size:13px; min-height:0; margin-top:8px;}
+body.mini .bar{padding:8px 8px calc(8px + env(safe-area-inset-bottom,0px));}
+body.mini .bar .in{gap:6px;}
+body.mini .act{min-height:60px; font-size:13px; gap:3px; border-radius:12px;}
+body.mini .act svg{width:22px; height:22px;}
+body.mini .alert{font-size:16px; padding:10px 12px; margin-bottom:8px;}
+body.mini .alert button{min-height:40px; font-size:15px;}
+
+/* Trip form */
+.trip-now{margin:0 0 12px; color:var(--muted);}
+.fld{display:flex; flex-direction:column; gap:4px; margin:0 0 10px;}
+.fld span{font-size:14px; color:var(--muted);}
+.fld input{
+  font:inherit; font-size:17px; min-height:48px; padding:0 14px; border-radius:12px;
+  border:1.5px solid var(--line); background:var(--surface); color:var(--text); width:100%;
+}
+.tools label.fld{flex-direction:column; align-items:stretch; gap:4px; min-height:0;}
+.cta{
+  font:inherit; font-size:18px; font-weight:600; width:100%; min-height:54px; border-radius:14px;
+  border:0; background:var(--text); color:var(--bg); cursor:pointer; margin-top:4px;
+}
+.cta:active{transform:scale(.98);}
+.msg{margin:10px 0 0; min-height:22px; font-size:15px; color:var(--muted);}
+
+/* Report */
+.mnav{display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px;}
+.mnav .tbtn{min-width:56px; padding:0 12px; text-align:center; font-size:24px;}
+.mlabel{font-weight:600; font-size:17px;}
+.rhead{display:flex; flex-wrap:wrap; gap:4px 22px; margin-bottom:10px; font-size:15px;}
+.tscroll{overflow-x:auto; max-width:100%;}
+.rt{width:100%; min-width:560px; border-collapse:collapse; font-size:14px; font-variant-numeric:tabular-nums;}
+.rt th{text-align:left; font-weight:600; padding:8px 10px 8px 0; border-bottom:2px solid var(--line); white-space:nowrap;}
+.rt td{padding:9px 10px 9px 0; border-bottom:1px solid var(--line); vertical-align:top;}
+.rt tfoot td{font-weight:600; border-bottom:0; border-top:2px solid var(--line);}
+.rt .r{text-align:right; padding-right:0;}
+.rt td.empty{color:var(--muted);}
+.del{
+  font:inherit; font-size:13px; min-height:36px; padding:0 10px; border-radius:8px;
+  border:1px solid var(--line); background:transparent; color:var(--over); white-space:nowrap;
+}
+.rbtns{display:flex; flex-wrap:wrap; gap:10px; margin-top:14px;}
+.rbtns .tbtn{flex:1 1 160px; text-align:center;}
+.tbtn:disabled{opacity:.35;}
+.small-note{margin:10px 0 0; font-size:13px; color:var(--muted);}
+
+@media print{
+  :root{padding:0;}
+  body{background:#fff !important; color:#000 !important;}
+  .bar,.alert,.wrap > *:not(#report),.noprint{display:none !important;}
+  #report{display:block !important; border:0; padding:0;}
+  #report,#report *{color:#000 !important; background:transparent !important; border-color:#555 !important;}
+  .tscroll{overflow:visible;}
+  .rt{min-width:0; width:100%; font-size:11pt;}
+}
+
+/* Alert banner */
+.alert{
+  position:sticky; top:env(safe-area-inset-top,0px); z-index:6;
+  display:flex; align-items:center; justify-content:space-between; gap:14px;
+  margin:0 0 12px; padding:14px 16px; border-radius:14px;
+  background:var(--warn); color:var(--on);
+  font-weight:600; font-size:20px; line-height:1.25;
+}
+.alert[hidden]{display:none;}
+.alert.over{background:var(--over); color:#fff;}
+.alert button{
+  font:inherit; font-size:17px; font-weight:600; min-width:64px; min-height:44px;
+  border-radius:10px; border:2px solid currentColor; background:transparent; color:inherit;
+}
+
+:focus-visible{outline:3px solid var(--drive); outline-offset:2px;}
+@media (prefers-reduced-motion: reduce){
+  .gauge i,.track i{transition:none;}
+  .act:active{transform:none;}
+}
+</style>
+</head>
+<body data-mode="none">
+<div class="wrap">
+
+  <div class="alert" id="alert" role="alert" hidden>
+    <span id="alertText"></span>
+    <button id="alertOk" type="button">OK</button>
+  </div>
+
+  <section class="hero" aria-label="Aktualny stan">
+    <div class="status">
+      <span class="dot"></span>
+      <span id="modeName">Nie rozpoczęto</span>
+      <span class="elapsed num" id="elapsed">0:00:00</span>
+      <button class="minibtn" id="miniBtn" type="button">Mini</button>
+    </div>
+    <div class="big num" id="bigNum">4:30</div>
+    <p class="big-label" id="bigLabel">jazdy do obowiązkowej przerwy</p>
+    <div class="gauge"><i id="gaugeFill"></i></div>
+    <p class="hint" id="hint">Dotknij „Jazda”, gdy ruszasz.</p>
+    <p class="mini-sum num" id="miniSum"></p>
+  </section>
+
+  <div class="limits">
+    <div class="row">
+      <div class="rowtop"><span class="rname">Dzień jazdy</span><span class="rval num" id="v-day">zostało 9:00</span></div>
+      <div class="track"><i id="f-day"></i></div>
+      <div class="rsub" id="s-day">0:00 z 9:00, liczone od ostatniego odpoczynku</div>
+    </div>
+    <div class="row">
+      <div class="rowtop"><span class="rname">Tydzień</span><span class="rval num" id="v-week">zostało 56:00</span></div>
+      <div class="track"><i id="f-week"></i></div>
+      <div class="rsub" id="s-week">0:00 z 56:00, od poniedziałku</div>
+    </div>
+    <div class="row">
+      <div class="rowtop"><span class="rname">Dwa tygodnie</span><span class="rval num" id="v-two">zostało 90:00</span></div>
+      <div class="track"><i id="f-two"></i></div>
+      <div class="rsub" id="s-two">0:00 z 90:00, ten i poprzedni tydzień</div>
+    </div>
+  </div>
+
+  <section class="blk" id="tripSec">
+    <h2>Trasa</h2>
+    <p class="trip-now" id="tripNow">Brak aktywnej trasy.</p>
+    <label class="fld"><span id="lblPlace">Miejsce startu</span>
+      <input id="tripPlace" type="text" autocomplete="off" placeholder="np. Poznań, baza">
+    </label>
+    <label class="fld"><span id="lblKm">Licznik na starcie (km)</span>
+      <input id="tripKm" type="text" inputmode="decimal" autocomplete="off" placeholder="np. 245310">
+    </label>
+    <button class="cta" id="tripBtn" type="button">Rozpocznij trasę</button>
+    <p class="msg" id="tripMsg" role="status"></p>
+  </section>
+
+  <section class="blk">
+    <h2>Ostatnie 24 godziny</h2>
+    <div class="strip" id="strip" role="img" aria-label="Wykres czynności z ostatnich 24 godzin"></div>
+    <div class="ticks" id="ticks"></div>
+    <ul class="legend">
+      <li><b class="d"></b>Jazda</li>
+      <li><b class="b"></b>Przerwa</li>
+      <li><b class="r"></b>Odpoczynek</li>
+    </ul>
+  </section>
+
+  <section class="blk">
+    <h2>Dziennik</h2>
+    <ul class="log" id="log"></ul>
+  </section>
+
+  <section class="blk" id="report">
+    <h2 id="rTitle">Raport tras</h2>
+    <div class="mnav noprint">
+      <button class="tbtn" id="mPrev" type="button" aria-label="Poprzedni miesiąc">‹</button>
+      <span class="mlabel" id="mLabel"></span>
+      <button class="tbtn" id="mNext" type="button" aria-label="Następny miesiąc">›</button>
+    </div>
+    <div class="rhead">
+      <div>Kierowca: <b id="rDriver">–</b></div>
+      <div>Pojazd: <b id="rPlate">–</b></div>
+    </div>
+    <div class="tscroll">
+      <table class="rt">
+        <thead>
+          <tr><th>Data</th><th>Start</th><th>Skąd</th><th>Koniec</th><th>Dokąd</th><th class="r">km</th><th class="noprint"></th></tr>
+        </thead>
+        <tbody id="rBody"></tbody>
+        <tfoot>
+          <tr><td colspan="5" id="rCount"></td><td class="r" id="rKm"></td><td class="noprint"></td></tr>
+        </tfoot>
+      </table>
+    </div>
+    <div class="rbtns noprint">
+      <button class="tbtn" id="printBtn" type="button">Drukuj raport</button>
+      <button class="tbtn" id="copyBtn" type="button">Kopiuj jako tekst</button>
+    </div>
+    <p class="small-note noprint">Jeśli przycisk nie otwiera druku, wybierz Drukuj w menu przeglądarki lub Udostępnij, a potem Drukuj. Wydruk pokaże tylko ten raport.</p>
+    <p class="small-note noprint" id="rMsg" role="status"></p>
+  </section>
+
+  <details>
+    <summary>Korekty i ustawienia</summary>
+    <div class="tools">
+      <label><input type="checkbox" id="ext10"> Dzień z limitem 10 godzin</label>
+      <div class="small">Wolno dwa razy w tygodniu. Domyślnie obowiązuje 9 godzin.</div>
+      <label><input type="checkbox" id="alerts"> Alarmy przed przerwą i limitem</label>
+      <label><input type="checkbox" id="wake"> Nie wygaszaj ekranu</label>
+      <div class="small">Alarmy (30, 15 i 5 minut przed przerwą oraz po jej przekroczeniu) działają, gdy aplikacja jest otwarta na ekranie.</div>
+      <button class="tbtn" id="testAlarm">Wypróbuj alarm</button>
+      <label class="fld"><span>Kierowca na raporcie (imię i nazwisko)</span>
+        <input id="driver" type="text" autocomplete="name">
+      </label>
+      <label class="fld"><span>Numer rejestracyjny pojazdu</span>
+        <input id="plate" type="text" autocapitalize="characters" autocomplete="off">
+      </label>
+      <button class="tbtn" id="earlier">Ta czynność zaczęła się 5 minut wcześniej</button>
+      <button class="tbtn" id="undo">Cofnij ostatnią zmianę</button>
+      <button class="tbtn danger" id="clear">Wyczyść wszystkie dane</button>
+    </div>
+  </details>
+
+  <p class="note">Narzędzie pomocnicze na podstawie rozporządzenia WE 561/2006. Nie zastępuje tachografu. Dane zapisują się tylko w przeglądarce na tym telefonie.</p>
+</div>
+
+<nav class="bar" aria-label="Wybierz czynność">
+  <div class="in">
+    <button class="act drive" data-mode="drive" aria-pressed="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/><path d="M3.5 10.5h5.2M15.3 10.5h5.2M12 14.5V21"/></svg>
+      Jazda
+    </button>
+    <button class="act break" data-mode="break" aria-pressed="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h12v5a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5V9z"/><path d="M16 10h1.5a2.5 2.5 0 0 1 0 5H16"/><path d="M8 3v3M12 3v3"/></svg>
+      Przerwa
+    </button>
+    <button class="act rest" data-mode="rest" aria-pressed="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></svg>
+      Odpoczynek
+    </button>
+  </div>
+</nav>
+
+<script>
+(function(){
+  var M = 60000, H = 3600000, DAY = 86400000;
+  var LIM = { cont: 4.5*H, day: 9*H, day10: 10*H, week: 56*H, two: 90*H };
+  var KEY = 'kierowca-czas-v1';
+  var NAMES = { none:'Nie rozpoczęto', drive:'Jazda', break:'Przerwa', rest:'Odpoczynek' };
+  var COLORS = { drive:'var(--drive)', break:'var(--break)', rest:'var(--rest)' };
+  var state = { log: [], ext10: false, alerts: true, wake: true, trips: [], driver: '', plate: '', mini: null };
+
+  function load(){
+    try{
+      var raw = localStorage.getItem(KEY);
+      if(!raw) return;
+      var p = JSON.parse(raw);
+      if(p && Array.isArray(p.log)){
+        state.log = p.log.filter(function(e){
+          return e && (e.t==='drive'||e.t==='break'||e.t==='rest') && isFinite(e.s);
+        }).sort(function(a,b){return a.s-b.s;});
+        state.ext10 = !!p.ext10;
+        state.alerts = p.alerts !== false;
+        state.wake = p.wake !== false;
+        state.driver = typeof p.driver === 'string' ? p.driver : '';
+        state.plate = typeof p.plate === 'string' ? p.plate : '';
+        state.mini = p.mini === true ? true : (p.mini === false ? false : null);
+        state.trips = Array.isArray(p.trips) ? p.trips.filter(function(t){
+          return t && isFinite(t.s);
+        }).map(function(t){
+          return {
+            id: String(t.id || t.s),
+            s: t.s,
+            e: isFinite(t.e) && t.e ? t.e : null,
+            from: typeof t.from === 'string' ? t.from : '',
+            to: typeof t.to === 'string' ? t.to : '',
+            kmS: isFinite(t.kmS) && t.kmS !== null ? t.kmS : null,
+            kmE: isFinite(t.kmE) && t.kmE !== null ? t.kmE : null
+          };
+        }).sort(function(a,b){ return a.s - b.s; }) : [];
+      }
+    }catch(e){}
+  }
+  function prune(){
+    var cutoff = Date.now() - 16*DAY, log = state.log, out = [];
+    for(var i=0;i<log.length;i++){
+      var end = log[i+1] ? log[i+1].s : Date.now();
+      if(end >= cutoff) out.push(log[i]);
+    }
+    state.log = out;
+  }
+  function save(){
+    prune();
+    var tripCutoff = Date.now() - 800*DAY;
+    state.trips = state.trips.filter(function(t){ return t.s >= tripCutoff; });
+    try{ localStorage.setItem(KEY, JSON.stringify(state)); }catch(e){}
+  }
+
+  function segs(now){
+    return state.log.map(function(e,i){
+      return { t:e.t, s:e.s, e: state.log[i+1] ? state.log[i+1].s : now };
+    });
+  }
+  function weekStart(now){
+    var d = new Date(now), day = (d.getDay()+6)%7;
+    d.setHours(0,0,0,0); d.setDate(d.getDate()-day);
+    return d.getTime();
+  }
+  function driveIn(sg, from, to){
+    var t = 0;
+    sg.forEach(function(x){
+      if(x.t!=='drive') return;
+      var a = Math.max(x.s, from), b = Math.min(x.e, to);
+      if(b>a) t += b-a;
+    });
+    return t;
+  }
+  function calc(now){
+    var sg = segs(now), cont = 0, flag = false, flagBefore = false, daily = 0;
+    sg.forEach(function(x,i){
+      var d = Math.max(0, x.e - x.s);
+      if(x.t==='drive'){ cont += d; daily += d; }
+      else{
+        if(i===sg.length-1) flagBefore = flag;
+        if(d >= 45*M){ cont = 0; flag = false; }
+        else if(flag && d >= 30*M){ cont = 0; flag = false; }
+        else if(d >= 15*M){ flag = true; }
+        if(x.t==='rest' && d >= 9*H) daily = 0;
+      }
+    });
+    var ws = weekStart(now);
+    return {
+      sg: sg, cont: cont, flagBefore: flagBefore, daily: daily,
+      week: driveIn(sg, ws, now), two: driveIn(sg, ws-7*DAY, now)
+    };
+  }
+
+  function hm(ms, ceil){
+    ms = Math.max(0, ms);
+    var m = ceil ? Math.ceil(ms/M) : Math.floor(ms/M);
+    return Math.floor(m/60) + ':' + String(m%60).padStart(2,'0');
+  }
+  function hms(ms){
+    var s = Math.floor(Math.max(0,ms)/1000);
+    return Math.floor(s/3600) + ':' + String(Math.floor(s%3600/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0');
+  }
+  function fmtHM(ts){
+    return new Date(ts).toLocaleTimeString('pl-PL', {hour:'2-digit', minute:'2-digit'});
+  }
+  function fmtT(ts, now){
+    var d = new Date(ts), n = new Date(now), s = fmtHM(ts);
+    if(d.toDateString() !== n.toDateString()){
+      s = d.toLocaleDateString('pl-PL', {weekday:'short'}) + ' ' + s;
+    }
+    return s;
+  }
+
+  function $(id){ return document.getElementById(id); }
+
+  function setRow(id, used, limit){
+    var left = limit - used, pct = Math.min(1, used/limit), lvl = '';
+    if(left < 0) lvl = 'over'; else if(pct >= 0.9) lvl = 'warn';
+    var v = $('v-'+id), f = $('f-'+id);
+    v.textContent = left >= 0 ? 'zostało ' + hm(left) : 'przekroczono o ' + hm(-left);
+    v.className = 'rval num ' + lvl;
+    f.style.width = (pct*100).toFixed(1) + '%';
+    f.className = lvl;
+    return hm(used) + ' z ' + hm(limit);
+  }
+
+  function render(){
+    var now = Date.now(), c = calc(now);
+    var last = state.log[state.log.length-1];
+    var mode = last ? last.t : 'none';
+    document.body.setAttribute('data-mode', mode);
+
+    $('modeName').textContent = NAMES[mode];
+    $('elapsed').textContent = last ? hms(now - last.s) : '0:00:00';
+
+    var left = LIM.cont - c.cont, over = left < 0;
+    var lvl = over ? 'over' : (left <= 30*M ? 'warn' : '');
+    var big = $('bigNum');
+    big.textContent = over ? '+' + hm(-left) : hm(left);
+    big.className = 'big num ' + lvl;
+    $('bigLabel').textContent = over ? 'przekroczony czas jazdy bez przerwy' : 'jazdy do obowiązkowej przerwy';
+    var gf = $('gaugeFill');
+    gf.style.width = (Math.min(1, c.cont/LIM.cont)*100).toFixed(1) + '%';
+    gf.className = lvl;
+
+    var d = last ? now - last.s : 0, hint = '';
+    if(mode==='none'){
+      hint = 'Dotknij „Jazda”, gdy ruszasz.';
+    }else if(mode==='drive'){
+      hint = 'Bez przerwy przejechano ' + hm(c.cont) + ' z 4:30.';
+    }else if(mode==='break'){
+      var need = (c.flagBefore ? 30 : 45)*M, rem = need - d;
+      hint = rem <= 0
+        ? 'Przerwa zaliczona. Licznik jazdy zaczyna od nowa.'
+        : 'Do zaliczenia przerwy jeszcze ' + hm(rem, true) + (c.flagBefore ? ' (druga część przerwy: 30 min).' : ' (45 min albo 15 + 30 min).');
+    }else{
+      if(d < 9*H) hint = 'Do odpoczynku dobowego jeszcze ' + hm(9*H - d, true) + ' (pełny odpoczynek: 11 h).';
+      else if(d < 11*H) hint = 'Skrócony odpoczynek zaliczony. Pełny (11 h) za ' + hm(11*H - d, true) + '.';
+      else hint = 'Pełny odpoczynek dobowy zaliczony.';
+    }
+    $('hint').textContent = hint;
+
+    var dayLimit = state.ext10 ? LIM.day10 : LIM.day;
+    checkAlerts(mode, left, dayLimit - c.daily);
+    $('s-day').textContent = setRow('day', c.daily, dayLimit) + ', liczone od ostatniego odpoczynku';
+    $('s-week').textContent = setRow('week', c.week, LIM.week) + ', od poniedziałku';
+    $('s-two').textContent = setRow('two', c.two, LIM.two) + ', ten i poprzedni tydzień';
+    function lf(l){ return l >= 0 ? hm(l) : '−' + hm(-l); }
+    $('miniSum').textContent = 'Dzień ' + lf(dayLimit - c.daily) + ' · Tydzień ' + lf(LIM.week - c.week);
+
+    // 24h strip
+    var from = now - DAY, strip = $('strip'), html = '';
+    c.sg.forEach(function(x){
+      if(x.e <= from) return;
+      var a = Math.max(x.s, from), l = (a-from)/DAY*100, w = (x.e-a)/DAY*100;
+      html += '<div class="seg ' + x.t + '" style="left:' + l.toFixed(3) + '%;width:' + w.toFixed(3) + '%"></div>';
+    });
+    strip.innerHTML = html;
+    var tk = '';
+    for(var k=0;k<5;k++){
+      tk += '<span>' + (k===4 ? 'teraz' : fmtHM(from + k*6*H)) + '</span>';
+    }
+    $('ticks').innerHTML = tk;
+
+    // log
+    var ul = $('log');
+    if(!c.sg.length){
+      ul.innerHTML = '<li><p class="empty">Wpisy pojawią się po pierwszej zmianie czynności.</p></li>';
+    }else{
+      var lh = '';
+      var list = c.sg.slice(-8).reverse();
+      list.forEach(function(x, i){
+        var isLast = (i===0);
+        lh += '<li><span class="ld" style="background:' + COLORS[x.t] + '"></span>' +
+              '<span class="ln">' + NAMES[x.t] + '</span>' +
+              '<span class="lt">' + fmtT(x.s, now) + ' – ' + (isLast ? 'trwa' : fmtT(x.e, now)) + '</span>' +
+              '<span class="ll num">' + hm(x.e - x.s) + '</span></li>';
+      });
+      ul.innerHTML = lh;
+    }
+
+    var btns = document.querySelectorAll('.act');
+    for(var i=0;i<btns.length;i++){
+      btns[i].setAttribute('aria-pressed', btns[i].getAttribute('data-mode')===mode ? 'true' : 'false');
+    }
+  }
+
+  /* ---- Alarmy ---- */
+  var ac = null, wl = null, wlPending = false, fired = {}, primed = false;
+  function unlockAudio(){
+    try{
+      if(!ac){ var C = window.AudioContext || window.webkitAudioContext; if(C) ac = new C(); }
+      if(ac && ac.state === 'suspended') ac.resume();
+    }catch(e){}
+  }
+  function beep(n, freq){
+    try{
+      if(!ac) return;
+      var t0 = ac.currentTime;
+      for(var i=0;i<n;i++){
+        var o = ac.createOscillator(), g = ac.createGain(), t = t0 + i*0.4;
+        o.type = 'sine'; o.frequency.value = freq;
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.5, t+0.03);
+        g.gain.exponentialRampToValueAtTime(0.0001, t+0.3);
+        o.connect(g); g.connect(ac.destination);
+        o.start(t); o.stop(t+0.35);
+      }
+    }catch(e){}
+  }
+  function showAlert(msg, lvl){
+    var a = $('alert');
+    $('alertText').textContent = msg;
+    a.className = 'alert' + (lvl==='over' ? ' over' : '');
+    a.hidden = false;
+  }
+  function hideAlert(){ $('alert').hidden = true; }
+  function announce(r){
+    showAlert(r.msg, r.lvl);
+    beep(r.n, r.f);
+    try{ if(navigator.vibrate) navigator.vibrate(r.lvl==='over' ? [400,150,400,150,400] : [250,120,250]); }catch(e){}
+    try{
+      if(document.hidden && 'Notification' in window && Notification.permission==='granted'){
+        new Notification('Czas jazdy', { body: r.msg });
+      }
+    }catch(e){}
+  }
+  var RULES = [
+    { k:'c30', src:'cont', th:30, lvl:'warn', n:1, f:660, msg:'Za 30 minut obowiązkowa przerwa.' },
+    { k:'c15', src:'cont', th:15, lvl:'warn', n:2, f:660, msg:'Za 15 minut obowiązkowa przerwa. Zacznij szukać parkingu.' },
+    { k:'c5',  src:'cont', th:5,  lvl:'warn', n:3, f:880, msg:'Za 5 minut obowiązkowa przerwa!' },
+    { k:'c0',  src:'cont', th:0,  lvl:'over', n:4, f:880, msg:'Czas jazdy bez przerwy minął. Zatrzymaj się i zrób przerwę.' },
+    { k:'d30', src:'day',  th:30, lvl:'warn', n:1, f:520, msg:'Za 30 minut koniec dziennego limitu jazdy.' },
+    { k:'d0',  src:'day',  th:0,  lvl:'over', n:4, f:520, msg:'Dzienny limit jazdy wyczerpany.' }
+  ];
+  function checkAlerts(mode, leftCont, leftDay){
+    var vals = { cont:leftCont, day:leftDay };
+    RULES.forEach(function(r){ if(vals[r.src] > r.th*M) fired[r.k] = false; });
+    if(!primed){
+      RULES.forEach(function(r){ if(vals[r.src] <= r.th*M) fired[r.k] = true; });
+      primed = true;
+      return;
+    }
+    if(mode !== 'drive') return;
+    ['cont','day'].forEach(function(src){
+      var hit = null;
+      RULES.forEach(function(r){
+        if(r.src===src && vals[src] <= r.th*M && !fired[r.k]) hit = r;
+      });
+      if(hit){
+        RULES.forEach(function(r){ if(r.src===src && r.th >= hit.th) fired[r.k] = true; });
+        if(state.alerts) announce(hit);
+      }
+    });
+  }
+  function updateWake(){
+    try{
+      var want = state.wake && document.visibilityState === 'visible';
+      if(want && !wl && !wlPending && navigator.wakeLock){
+        wlPending = true;
+        navigator.wakeLock.request('screen').then(function(s){
+          wlPending = false; wl = s;
+          s.addEventListener('release', function(){ wl = null; });
+        }).catch(function(){ wlPending = false; });
+      }else if(!want && wl){
+        wl.release(); wl = null;
+      }
+    }catch(e){ wlPending = false; }
+  }
+
+  /* ---- Trasy i raport ---- */
+  var monthOffset = 0;
+  function pad2(n){ return String(n).padStart(2,'0'); }
+  function parseKm(v){
+    v = String(v || '').replace(/\s/g,'').replace(',','.');
+    if(v === '') return null;
+    var n = parseFloat(v);
+    return (isFinite(n) && n >= 0) ? n : NaN;
+  }
+  function fmtKm(n){
+    return n == null ? '–' : n.toLocaleString('pl-PL', { maximumFractionDigits: 1 });
+  }
+  function fmtDate(ts){
+    var d = new Date(ts);
+    return pad2(d.getDate()) + '.' + pad2(d.getMonth()+1) + '.' + d.getFullYear();
+  }
+  function fmtDT(ts, ref){
+    var d = new Date(ts), r = new Date(ref), s = fmtHM(ts);
+    if(d.toDateString() !== r.toDateString()) s = pad2(d.getDate()) + '.' + pad2(d.getMonth()+1) + ' ' + s;
+    return s;
+  }
+  function esc(s){
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+      return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c];
+    });
+  }
+  function tripKm(t){
+    return (t.kmS != null && t.kmE != null && t.kmE >= t.kmS) ? (t.kmE - t.kmS) : null;
+  }
+  function plTrasy(n){
+    if(n === 1) return 'trasa';
+    var a = n % 10, b = n % 100;
+    return (a >= 2 && a <= 4 && (b < 12 || b > 14)) ? 'trasy' : 'tras';
+  }
+  function activeTrip(){
+    var t = state.trips[state.trips.length-1];
+    return (t && !t.e) ? t : null;
+  }
+  function prefillTrip(){
+    if(activeTrip()) return;
+    var last = state.trips[state.trips.length-1];
+    if(last && last.e){
+      $('tripPlace').value = last.to || '';
+      $('tripKm').value = last.kmE == null ? '' : String(last.kmE);
+    }
+  }
+  function renderTrip(){
+    var t = activeTrip(), now = Date.now();
+    $('tripNow').textContent = t
+      ? 'Trasa trwa od ' + fmtT(t.s, now) + (t.from ? ' (' + t.from + ')' : '') + '.'
+      : 'Brak aktywnej trasy.';
+    $('lblPlace').textContent = t ? 'Miejsce zakończenia' : 'Miejsce startu';
+    $('lblKm').textContent = t ? 'Licznik na końcu (km)' : 'Licznik na starcie (km)';
+    $('tripBtn').textContent = t ? 'Zakończ trasę' : 'Rozpocznij trasę';
+  }
+  function monthRange(){
+    var b = new Date(), y = b.getFullYear(), m = b.getMonth() + monthOffset;
+    var s = new Date(y, m, 1), e = new Date(y, m+1, 1);
+    return { s: s.getTime(), e: e.getTime(), label: s.toLocaleDateString('pl-PL', { month:'long', year:'numeric' }) };
+  }
+  function monthTrips(r){
+    return state.trips.filter(function(t){ return t.s >= r.s && t.s < r.e; });
+  }
+  function renderReport(){
+    var r = monthRange(), list = monthTrips(r), km = 0, html = '';
+    $('mLabel').textContent = r.label;
+    $('rTitle').textContent = 'Raport tras: ' + r.label;
+    $('rDriver').textContent = state.driver || '–';
+    $('rPlate').textContent = state.plate || '–';
+    if(!list.length){
+      html = '<tr><td colspan="7" class="empty">Brak tras w tym miesiącu.</td></tr>';
+    }
+    list.forEach(function(t){
+      var k = tripKm(t);
+      if(k != null) km += k;
+      html += '<tr><td>' + fmtDate(t.s) + '</td><td>' + fmtHM(t.s) + '</td><td>' + esc(t.from || '–') +
+              '</td><td>' + (t.e ? fmtDT(t.e, t.s) : 'trwa') + '</td><td>' + esc(t.to || '–') +
+              '</td><td class="r">' + fmtKm(k) + '</td><td class="noprint"><button class="del" type="button" data-id="' +
+              esc(t.id) + '">Usuń</button></td></tr>';
+    });
+    $('rBody').innerHTML = html;
+    $('rCount').textContent = 'Razem: ' + list.length + ' ' + plTrasy(list.length);
+    $('rKm').textContent = list.length ? fmtKm(km) : '–';
+    $('mNext').disabled = monthOffset >= 0;
+  }
+  function reportText(){
+    var r = monthRange(), list = monthTrips(r), km = 0;
+    var lines = ['Raport tras: ' + r.label];
+    if(state.driver) lines.push('Kierowca: ' + state.driver);
+    if(state.plate) lines.push('Pojazd: ' + state.plate);
+    lines.push(['Data','Start','Skąd','Koniec','Dokąd','km'].join('\t'));
+    list.forEach(function(t){
+      var k = tripKm(t);
+      if(k != null) km += k;
+      lines.push([fmtDate(t.s), fmtHM(t.s), t.from || '–', t.e ? fmtDT(t.e, t.s) : 'trwa', t.to || '–', fmtKm(k)].join('\t'));
+    });
+    lines.push('Razem: ' + list.length + ' ' + plTrasy(list.length) + '\t\t\t\t\t' + fmtKm(km));
+    return lines.join('\n');
+  }
+  function copyText(text, done){
+    function fallback(){
+      try{
+        var ta = document.createElement('textarea');
+        ta.value = text; ta.setAttribute('readonly','');
+        ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select();
+        var ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        done(!!ok);
+      }catch(e){ done(false); }
+    }
+    try{
+      if(navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(text).then(function(){ done(true); }).catch(fallback);
+      }else{ fallback(); }
+    }catch(e){ fallback(); }
+  }
+
+  function setMode(t){
+    var last = state.log[state.log.length-1];
+    if(last && last.t===t) return;
+    state.log.push({ t:t, s:Date.now() });
+    save();
+    try{ if(navigator.vibrate) navigator.vibrate(15); }catch(e){}
+    unlockAudio();
+    hideAlert();
+    updateWake();
+    render();
+  }
+
+  var btns = document.querySelectorAll('.act');
+  for(var i=0;i<btns.length;i++){
+    (function(b){ b.addEventListener('click', function(){ setMode(b.getAttribute('data-mode')); }); })(btns[i]);
+  }
+
+  $('ext10').addEventListener('change', function(){
+    state.ext10 = this.checked; save(); render();
+  });
+  $('earlier').addEventListener('click', function(){
+    var n = state.log.length;
+    if(!n) return;
+    var prevS = n>1 ? state.log[n-2].s : -Infinity;
+    state.log[n-1].s = Math.max(prevS, state.log[n-1].s - 5*M);
+    save(); render();
+  });
+  $('undo').addEventListener('click', function(){
+    if(!state.log.length) return;
+    state.log.pop(); save(); render();
+  });
+  var clearBtn = $('clear'), armed = false, armT = null;
+  clearBtn.addEventListener('click', function(){
+    if(!armed){
+      armed = true;
+      clearBtn.textContent = 'Na pewno? Dotknij ponownie';
+      armT = setTimeout(function(){ armed = false; clearBtn.textContent = 'Wyczyść wszystkie dane'; }, 4000);
+      return;
+    }
+    clearTimeout(armT); armed = false;
+    clearBtn.textContent = 'Wyczyść wszystkie dane';
+    state.log = []; save(); render();
+  });
+
+  $('alerts').addEventListener('change', function(){
+    state.alerts = this.checked; save();
+    if(this.checked){
+      unlockAudio();
+      try{ if('Notification' in window && Notification.permission === 'default') Notification.requestPermission(); }catch(e){}
+    }
+  });
+  $('wake').addEventListener('change', function(){
+    state.wake = this.checked; save(); updateWake();
+  });
+  $('testAlarm').addEventListener('click', function(){
+    unlockAudio();
+    announce({ msg:'Próba alarmu: za 15 minut obowiązkowa przerwa.', lvl:'warn', n:2, f:660 });
+  });
+  $('alertOk').addEventListener('click', hideAlert);
+
+  $('driver').addEventListener('input', function(){ state.driver = this.value.trim(); save(); renderReport(); });
+  $('plate').addEventListener('input', function(){ state.plate = this.value.trim(); save(); renderReport(); });
+
+  $('tripBtn').addEventListener('click', function(){
+    var place = $('tripPlace').value.trim(), km = parseKm($('tripKm').value);
+    var t = activeTrip(), msg = $('tripMsg'), now = Date.now();
+    if(isNaN(km)){ msg.textContent = 'Wpisz licznik jako liczbę, na przykład 245310.'; return; }
+    if(!t){
+      state.trips.push({
+        id: String(now) + Math.random().toString(36).slice(2,6),
+        s: now, e: null, from: place, to: '', kmS: km, kmE: null
+      });
+      $('tripPlace').value = ''; $('tripKm').value = '';
+      msg.textContent = 'Trasa rozpoczęta o ' + fmtHM(now) + '.';
+    }else{
+      if(km != null && t.kmS != null && km < t.kmS){
+        msg.textContent = 'Licznik na końcu jest mniejszy niż na starcie (' + fmtKm(t.kmS) + ' km).';
+        return;
+      }
+      t.e = now; t.to = place; t.kmE = km;
+      $('tripPlace').value = place;
+      $('tripKm').value = km == null ? '' : String(km);
+      msg.textContent = 'Trasa zakończona o ' + fmtHM(now) + '.';
+    }
+    save(); renderTrip(); renderReport();
+  });
+
+  $('mPrev').addEventListener('click', function(){ monthOffset--; renderReport(); });
+  $('mNext').addEventListener('click', function(){ if(monthOffset < 0){ monthOffset++; renderReport(); } });
+  $('rBody').addEventListener('click', function(ev){
+    var b = ev.target.closest ? ev.target.closest('.del') : null;
+    if(!b) return;
+    if(b.getAttribute('data-armed') !== '1'){
+      b.setAttribute('data-armed', '1');
+      b.textContent = 'Na pewno?';
+      setTimeout(function(){
+        if(b.isConnected){ b.setAttribute('data-armed', '0'); b.textContent = 'Usuń'; }
+      }, 3000);
+      return;
+    }
+    var id = b.getAttribute('data-id');
+    state.trips = state.trips.filter(function(t){ return t.id !== id; });
+    save(); renderTrip(); renderReport();
+  });
+  $('printBtn').addEventListener('click', function(){
+    try{ window.print(); }
+    catch(e){ $('rMsg').textContent = 'Nie udało się otworzyć druku. Użyj opcji Drukuj w menu przeglądarki.'; }
+  });
+  $('copyBtn').addEventListener('click', function(){
+    copyText(reportText(), function(ok){
+      $('rMsg').textContent = ok ? 'Raport skopiowany. Możesz go wkleić do wiadomości lub arkusza.' : 'Nie udało się skopiować raportu.';
+    });
+  });
+
+  var mq = window.matchMedia ? window.matchMedia('(max-width: 340px), (max-height: 560px)') : null;
+  function applyMini(){
+    var small = mq ? mq.matches : false;
+    var on = state.mini === true || (state.mini === null && small);
+    document.body.classList.toggle('mini', on);
+    $('miniBtn').textContent = on ? 'Pełny widok' : 'Mini';
+  }
+  $('miniBtn').addEventListener('click', function(){
+    state.mini = document.body.classList.contains('mini') ? false : true;
+    save(); applyMini();
+  });
+  if(mq){
+    if(mq.addEventListener) mq.addEventListener('change', applyMini);
+    else if(mq.addListener) mq.addListener(applyMini);
+  }
+
+  load();
+  $('ext10').checked = state.ext10;
+  $('alerts').checked = state.alerts;
+  $('wake').checked = state.wake;
+  $('driver').value = state.driver;
+  $('plate').value = state.plate;
+  prefillTrip();
+  applyMini();
+  render();
+  renderTrip();
+  renderReport();
+  updateWake();
+  setInterval(render, 1000);
+  document.addEventListener('pointerdown', unlockAudio, { passive:true });
+  document.addEventListener('visibilitychange', function(){ if(!document.hidden) render(); updateWake(); });
+})();
+</script>
+</body>
+</html>
